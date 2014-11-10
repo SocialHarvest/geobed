@@ -1,7 +1,9 @@
 Geobed
 ============
 
-This Golang package contains an embedded geocoder. There are no external dependendies (other than data files). It geocodes to a city level detail.
+This Golang package contains an embedded geocoder. There are no major external dependendies other than some downloaded data files. Once downloaded, those data files 
+are stored in memory. So after the initial load there truly are no outside dependencies. It geocodes and reverse geocodes to a city level detail. It approximates and takes 
+educated guesses when not enough detail is provided. See test cases for examples.
 
 ### Why?
 
@@ -18,8 +20,8 @@ Then the "why" becomes quite clear and I'm glad you stumbled upon this package. 
 
 ### How?
 
-Simple. There are free data sets out there with cities (states and countries) and their lat/lng coordinates. Maxmind offers one as does Geonames. We take those (about 26MB in size) 
-and put them into an embedded database (QL) and now we can query the data with some good speed. If your server has an SSD, then it's going to be even faster.
+Simple. There are free data sets out there with cities (states and countries) and their lat/lng coordinates. Maxmind offers one as does Geonames. This data gets loaded into 
+memory to be searched upon.
 
 What about reverse geocoding? Well, that's much more difficult. The pro software is going to require even more data in the database, PostGIS is common, boundary data, etc. 
 All this just to narrow down and make the query faster.
@@ -29,23 +31,19 @@ The precision can lead to some long decimals too. How can we query that?! Enter 
 
 Have you heard of geohashing? http://en.wikipedia.org/wiki/Geohash
 
-It takes those two fields (lat/lng) and converts them into one string. This makes it far easier to query. We can simply do a ```LIKE%``` or use a substring function. On one field. 
+It takes those two fields (lat/lng) and converts them into one string. This makes it far easier to query. Now, we can simply do a substring comparison. On one field. 
 Heck, even a regular expression could be used.
 
 Then it's just a matter of finding the best matching hash and voila. You've reversed geocoded in a pretty quick fashion.
 
-Yes. Yes a million times over this is not super accurate. It is, however, super fast and inexpensive. So when you need general geocoding, this is a great solution.
+Yes. Yes a million times over this is not super accurate. It is, however, super fast and inexpensive. When you need fuzzy geocoding, this is a great solution.
 
 ### What Kinda Detail?
 
-Well, you could geocode "New York, NY" for example or even just "New York". You could geocode some small city as well (the population would likely need to be 1,000 people or greater). 
-Of course, nothing  prevents you from getting a more detailed data set. The greater the detail, the larger the data, the most disk space used, and the slower the performance. 
-Though there's something to be said for data that sits beside an application on an SSD.
+Well, you could geocode "New York, NY" for example or even just "New York". You could geocode some small city as well. 
 
 You could reverse geocode for New York as well. However, it won't give you detail by the street level. It won't even give you detail by the district. It might simply return the center 
 of the city (or close to).
 
 Chances are that's good enough for you (if you're still reading this). Chances are you want to cluster your locations anyway. Chances are you're looking at a map with plotted points 
 that's rather zoomed out. Or you're filling in a vector image state by state without a zoom. In these cases, you don't need anything other than the city.
-
-
