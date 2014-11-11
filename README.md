@@ -1,6 +1,8 @@
 Geobed
 ============
 
+[![Build Status](https://drone.io/github.com/SocialHarvest/geobed/status.png)](https://drone.io/github.com/SocialHarvest/geobed/latest) [![Coverage Status](https://coveralls.io/repos/SocialHarvest/geobed/badge.png)](https://coveralls.io/r/SocialHarvest/geobed)
+
 This Golang package contains an embedded geocoder. There are no major external dependendies other than some downloaded data files. Once downloaded, those data files 
 are stored in memory. So after the initial load there truly are no outside dependencies. It geocodes and reverse geocodes to a city level detail. It approximates and takes 
 educated guesses when not enough detail is provided. See test cases for examples.

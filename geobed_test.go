@@ -75,7 +75,7 @@ func (s *GeobedSuite) TestReverseGeocode(c *C) {
 // 2214503806 ns/op
 // 2265304148 ns/op
 // 2186608767 ns/op
-// This has been scoring around 2 - 2.3 seconds on my MacbookPro Retina with 8GB of RAM (before concurrency was added)
+// This has been scoring around 2 - 2.4 seconds on my MacbookPro Retina with 8GB of RAM (before concurrency was added)
 func BenchmarkReverseGeocode(b *testing.B) {
 	g := NewGeobed()
 
@@ -86,10 +86,10 @@ func BenchmarkReverseGeocode(b *testing.B) {
 
 // 3034545386 ns/op
 // 3240491478 ns/op
-// 5304891006 ns/op
 // 3283455985 ns/op
 // 3176123247 ns/op
-// This has been scoring around 3 - 5.3 seconds on my MacbookPro Retina with 8GB of RAM (before concurrency was added)
+// 3234933711 ns/op
+// This has been scoring around 3 - 3.3 seconds on my MacbookPro Retina with 8GB of RAM (before concurrency was added)
 func BenchmarkGeocode(b *testing.B) {
 	g := NewGeobed()
 

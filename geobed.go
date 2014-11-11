@@ -14,6 +14,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	//	"sync"
 )
 
 // There are over 2.4 million cities in the world. The Geonames data set only contains 143,270 and the MaxMind set contains 567,382 and 3,173,959 in the other MaxMind set.
@@ -498,6 +499,8 @@ func (g *GeoBed) loadDataSets() {
 	}
 }
 
+//var bestMatchingKeys = map[int]int{}
+
 // Forward geocode, location string to lat/lng (returns a struct though)
 func (g *GeoBed) Geocode(n string) GeobedCity {
 	var c GeobedCity
@@ -520,6 +523,7 @@ func (g *GeoBed) Geocode(n string) GeobedCity {
 
 	var bestMatchingKeys = map[int]int{}
 	var bestMatchingKey = 0
+
 	for k, v := range g.c {
 		// Exact match (with two or more fields) can return immediately. High enough confidence.
 		if strings.EqualFold(n, v.City+", "+v.Region) || strings.EqualFold(n, v.City+" "+v.Region) {
@@ -546,9 +550,6 @@ func (g *GeoBed) Geocode(n string) GeobedCity {
 			}
 		}
 
-		// Exact match (city only) -- does this even make sense? it's a pretty big guess
-		// It catches things like "New York" ... Because otherwise "New" is found (which is apparently a city) and scores higher...
-		// Though every check adds a little bit of time to the process.
 		if strings.EqualFold(n, v.City) {
 			if val, ok := bestMatchingKeys[k]; ok {
 				bestMatchingKeys[k] = val + 6
@@ -594,6 +595,7 @@ func (g *GeoBed) Geocode(n string) GeobedCity {
 					bestMatchingKeys[k] = 3
 				}
 			}
+
 			// Country (worth 2 points if exact match)
 			if strings.EqualFold(v.Country, ns) {
 				if val, ok := bestMatchingKeys[k]; ok {
