@@ -42,3 +42,7 @@ c := g.ReverseGeocode(30.26715, -97.74306)
 ```
 
 This would give you Austin, TX for example.
+
+## Data Sets
+
+The data sets are provided by [Geonames](http://download.geonames.org/export/dump) and [MaxMind](https://www.maxmind.com/en/worldcities). These are open source data sets. See their web sites for additional information.
