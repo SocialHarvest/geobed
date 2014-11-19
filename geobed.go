@@ -513,25 +513,27 @@ func (g *GeoBed) Geocode(n string) GeobedCity {
 	for _, ns := range nSlice {
 		ns = strings.TrimSuffix(ns, ",")
 
-		// Get the first character in the string, this tells us where to stop.
-		fc := toLower(string(ns[0]))
-		// Get the previous index key (by getting the previous character in the alphabet) to figure out where to start.
-		pik := string(prev(rune(fc[0])))
+		if len(ns) > 0 {
+			// Get the first character in the string, this tells us where to stop.
+			fc := toLower(string(ns[0]))
+			// Get the previous index key (by getting the previous character in the alphabet) to figure out where to start.
+			pik := string(prev(rune(fc[0])))
 
-		// To/from key
-		fk := 0
-		tk := 0
-		if val, ok := cityNameIdx[pik]; ok {
-			fk = val
+			// To/from key
+			fk := 0
+			tk := 0
+			if val, ok := cityNameIdx[pik]; ok {
+				fk = val
+			}
+			if val, ok := cityNameIdx[fc]; ok {
+				tk = val
+			}
+			// Don't let the to key be out of range.
+			if tk == 0 {
+				tk = (len(g.c) - 1)
+			}
+			ranges = append(ranges, r{fk, tk})
 		}
-		if val, ok := cityNameIdx[fc]; ok {
-			tk = val
-		}
-		// Don't let the to key be out of range.
-		if tk == 0 {
-			tk = (len(g.c) - 1)
-		}
-		ranges = append(ranges, r{fk, tk})
 	}
 
 	var bestMatchingKeys = map[int]int{}
