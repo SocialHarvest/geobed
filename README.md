@@ -5,47 +5,40 @@ Geobed
 
 This Golang package contains an embedded geocoder. There are no major external dependendies other than some downloaded data files. Once downloaded, those data files 
 are stored in memory. So after the initial load there truly are no outside dependencies. It geocodes and reverse geocodes to a city level detail. It approximates and takes 
-educated guesses when not enough detail is provided. See test cases for examples.
+educated guesses when not enough detail is provided. See test cases for more examples.
 
-### Why?
+## Why?
 
-Honestly, have you seen what people want for geocoding? The pricing for API usage is insane. Yes, the data sets are hundreds of gigabytes. Yes, it takes a good bit of RAM 
-to quickly query and return results. I think it's just too expensive to be frank. I also think that street level detail is sometimes going overboard. For starters, it's only 
-a guess anyway. Second, street level detail is so rarely needed anyway. Fraud detection is one of the biggest use cases, but what if you just want to simply analyze a piece of 
-text and grab any major cities from it to then plot (or whatever)? You might go to use an API, but you're getting details you'll never use. So it's wasteful.
+To keep it short and simple, the reason this package was built was because geocoding services are really expensive. If city level detail is enough and you don't need street addresses, 
+then this should be completely fine. It's also nice that there are no HTTP requests being made to do this (after initial load - and the data files can be copied to other places).
 
-APIs are slow too. Think about geocoding hundreds of thousands of location strings. Making those HTTP requests take a long time and batching doesn't even help that much. 
+Performance is pretty good, but that is one of the goals. Overtime it should improve, but for now it geocodes a string to lat/lng in about 0.0125 - 0.0135 seconds (on a Macbook Pro).
 
-Wouldn't it be awesome to not need to make HTTP requests to an API? Wouldn't you be willing to give up the street level detail for that performance increase? For the cost savings? 
+## Usage
 
-Then the "why" becomes quite clear and I'm glad you stumbled upon this package. It might be for you.
+You should re-use the ```GeoBed`` struct as it contains a LOT of data (2.7+ million items). On this struct are the functions to geocode and reverse geocode.
 
-### How?
+```
+g := NewGeobed()
+c := g.Geocode("london")
+```
 
-Simple. There are free data sets out there with cities (states and countries) and their lat/lng coordinates. Maxmind offers one as does Geonames. This data gets loaded into 
-memory to be searched upon.
+In the above case, ```c``` should end up being:
 
-What about reverse geocoding? Well, that's much more difficult. The pro software is going to require even more data in the database, PostGIS is common, boundary data, etc. 
-All this just to narrow down and make the query faster.
+```
+{London london City of London,Gorad Londan,ILondon,LON,Lakana,Landen,Ljondan,Llundain,Londain,Londan,Londar,Londe,Londen,Londinium,Londino,Londn,London,London City,Londona,Londonas,Londoni,Londono,Londonu,Londra,Londres,Londrez,Londri,Londye,Londyn,Londýn,Lonn,Lontoo,Loundres,Luan GJon,Lunden,Lundra,Lundun,Lundunir,Lundúnir,Lung-dung,Lunnainn,Lunnin,Lunnon,Luân Đôn,Lùng-dŭng,Lākana,Lůndůn,Lọndọnu,Ranana,Rānana,The City,ilantan,landan,landana,leondeon,lndn,london,londoni,lun dui,lun dun,lwndwn,lxndxn,rondon,Łondra,Λονδίνο,Горад Лондан,Лондан,Лондон,Лондонъ,Лёндан,Լոնդոն,לאנדאן,לונדון,لندن,لوندون,لەندەن,ܠܘܢܕܘܢ,लंडन,लंदन,लण्डन,लन्डन्,লন্ডন,લંડન,ଲଣ୍ଡନ,இலண்டன்,లండన్,ಲಂಡನ್,ലണ്ടൻ,ලන්ඩන්,ลอนดอน,ລອນດອນ,ལོན་ཊོན།,လန်ဒန်မြို့,ლონდონი,ለንደን,ᎫᎴ ᏗᏍᎪᏂᎯᏱ,ロンドン,伦敦,倫敦,런던 GB ENG 51.50853 -0.12574 7556900 gcpvj0u6yjcm}
+```
 
-Our data set has significantly less points, so it should be faster...But also less accurate. Even still, we have an issue with querying two different columns with float values. 
-The precision can lead to some long decimals too. How can we query that?! Enter geohash.
+So you can get lat/lng from the ```GeobedCity``` struct real easily with: ```c.Latitude``` and ```c.Longitude```.
 
-Have you heard of geohashing? http://en.wikipedia.org/wiki/Geohash
+You'll notice some records are larger and contain many alternate names for the city. The free data sets come from Geonames and MaxMind. MaxMind has more but less details. Geonames has more details, but it only contains cities with populations of 1,000 people or greater (about 143,000 records).
 
-It takes those two fields (lat/lng) and converts them into one string. This makes it far easier to query. Now, we can simply do a substring comparison. On one field. 
-Heck, even a regular expression could be used.
+If you looked up a major city, you'll likely have information such as population (```c.Population```).
 
-Then it's just a matter of finding the best matching hash and voila. You've reversed geocoded in a pretty quick fashion.
+You can reverse geocode as well.
 
-Yes. Yes a million times over this is not super accurate. It is, however, super fast and inexpensive. When you need fuzzy geocoding, this is a great solution.
+```
+c := g.ReverseGeocode(30.26715, -97.74306)
+```
 
-### What Kinda Detail?
-
-Well, you could geocode "New York, NY" for example or even just "New York". You could geocode some small city as well. 
-
-You could reverse geocode for New York as well. However, it won't give you detail by the street level. It won't even give you detail by the district. It might simply return the center 
-of the city (or close to).
-
-Chances are that's good enough for you (if you're still reading this). Chances are you want to cluster your locations anyway. Chances are you're looking at a map with plotted points 
-that's rather zoomed out. Or you're filling in a vector image state by state without a zoom. In these cases, you don't need anything other than the city.
+This would give you Austin, TX for example.
