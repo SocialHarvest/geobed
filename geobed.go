@@ -142,6 +142,7 @@ var maxMindCityDedupeIdx map[string][]string
 
 // Holds information about the index ranges for city names (1st and 2nd characters) to help narrow down sets of the GeobedCity slice to scan when looking for a match.
 var cityNameIdx map[string]int
+var locationDedupeIdx map[string]bool
 
 // Information about each country from Geonames including; ISO codes, FIPS, country capital, area (sq km), population, and more.
 // Particularly useful for validating a location string contains a country name which can help the search process.
@@ -192,7 +193,7 @@ func (g *GeoBed) downloadDataSets() {
 		_, err := os.Stat(f["path"])
 		if err != nil {
 			if os.IsNotExist(err) {
-				log.Println(f["path"] + " does not exist, downloading...")
+				// log.Println(f["path"] + " does not exist, downloading...")
 				out, oErr := os.Create(f["path"])
 				defer out.Close()
 				if oErr == nil {
@@ -201,7 +202,7 @@ func (g *GeoBed) downloadDataSets() {
 					if rErr == nil {
 						_, nErr := io.Copy(out, r.Body)
 						if nErr != nil {
-							log.Println("Failed to copy data file, it will be tried again on next application start.")
+							// log.Println("Failed to copy data file, it will be tried again on next application start.")
 							// remove file so another attempt can be made, should something fail
 							err = os.Remove(f["path"])
 						}
@@ -218,6 +219,8 @@ func (g *GeoBed) downloadDataSets() {
 
 // Unzips the data sets and loads the data.
 func (g *GeoBed) loadDataSets() {
+	locationDedupeIdx = make(map[string]bool)
+
 	for _, f := range dataSetFiles {
 		// This one is zipped
 		if f["id"] == "geonamesCities1000" {
@@ -287,7 +290,7 @@ func (g *GeoBed) loadDataSets() {
 			}
 		}
 
-		// ...And this one is Gzipped
+		// ...And this one is Gzipped (and this one may have worked with the CSV package, but parse it the same way as the others line by line)
 		if f["id"] == "maxmindWorldCities" {
 			// It also has a lot of dupes
 			maxMindCityDedupeIdx = make(map[string][]string)
@@ -312,13 +315,12 @@ func (g *GeoBed) loadDataSets() {
 				i++
 				t := scanner.Text()
 
-				// This may be the only one that would have actualled been a CSV, but reading line by line is ok.
 				fields := strings.Split(t, ",")
 				if len(fields) == 7 {
 					var b bytes.Buffer
-					b.WriteString(fields[0])
-					b.WriteString(fields[1])
-					b.WriteString(fields[4])
+					b.WriteString(fields[0]) // country
+					b.WriteString(fields[3]) // region
+					b.WriteString(fields[1]) // city
 
 					idx := b.String()
 					b.Reset()
@@ -348,25 +350,32 @@ func (g *GeoBed) loadDataSets() {
 							gh = ""
 						}
 
-						var c GeobedCity
-						c.City = cn
-						c.CityLower = toLower(c.City)
-						c.Country = toUpper(string(fields[0]))
-						c.Region = string(fields[3])
-						c.Latitude = lat
-						c.Longitude = lng
-						c.Population = int32(pop)
-						c.Geohash = gh
+						// If the geohash was seen before...
+						_, ok := locationDedupeIdx[gh]
+						if !ok {
+							locationDedupeIdx[gh] = true
 
-						// Don't include entries without a city name. If we want to geocode the centers of countries and states, then we can do that faster through other means.
-						if len(c.City) > 0 {
-							g.c = append(g.c, c)
+							var c GeobedCity
+							c.City = cn
+							c.CityLower = toLower(c.City)
+							c.Country = toUpper(string(fields[0]))
+							c.Region = string(fields[3])
+							c.Latitude = lat
+							c.Longitude = lng
+							c.Population = int32(pop)
+							c.Geohash = gh
+
+							// Don't include entries without a city name. If we want to geocode the centers of countries and states, then we can do that faster through other means.
+							if len(c.City) > 0 && len(c.Country) > 0 {
+								g.c = append(g.c, c)
+							}
 						}
 					}
 				}
 			}
 			// Clear out the temrporary index (set to nil, it does get re-created) so that Go can garbage collect it at some point whenever it feels the need.
 			maxMindCityDedupeIdx = nil
+			locationDedupeIdx = nil
 		}
 
 		// ...And this one is just plain text
@@ -428,6 +437,10 @@ func (g *GeoBed) loadDataSets() {
 	// Sort []GeobedCity by city names to help with binary search (the City field is the most searched upon field and the matching names can be easily filtered down from there).
 	sort.Sort(g.c)
 
+	//debug
+	//log.Println("TOTAL RECORDS:")
+	//log.Println(len(g.c))
+
 	// Index the locations of city names in the g.c []GeoCity slice. This way when searching the range can be limited so it will be faster.
 	cityNameIdx = make(map[string]int)
 	for k, v := range g.c {
@@ -444,18 +457,18 @@ func (g *GeoBed) loadDataSets() {
 		}
 
 		// Get the index key for the first two characters of the city name.
-		if len(v.CityLower) >= 2 {
-			ik2 := v.CityLower[0:2]
-			if val, ok := cityNameIdx[ik2]; ok {
-				// If this key number is greater than what was previously recorded, then set it as the new indexed key.
-				if val < k {
-					cityNameIdx[ik2] = k
-				}
-			} else {
-				// If the index key has not yet been set for this value, then set it.
-				cityNameIdx[ik2] = k
-			}
-		}
+		// if len(v.CityLower) >= 2 {
+		// 	ik2 := v.CityLower[0:2]
+		// 	if val, ok := cityNameIdx[ik2]; ok {
+		// 		// If this key number is greater than what was previously recorded, then set it as the new indexed key.
+		// 		if val < k {
+		// 			cityNameIdx[ik2] = k
+		// 		}
+		// 	} else {
+		// 		// If the index key has not yet been set for this value, then set it.
+		// 		cityNameIdx[ik2] = k
+		// 	}
+		// }
 	}
 }
 
@@ -708,6 +721,7 @@ func (g *GeoBed) Geocode(n string) GeobedCity {
 		}
 	}
 
+	// debug
 	// log.Println("Possible results:")
 	// log.Println(len(bestMatchingKeys))
 	// for _, kv := range bestMatchingKeys {
@@ -820,7 +834,7 @@ func (g GeoBed) store() error {
 		b.Reset()
 		return e
 	}
-	log.Printf("%d bytes successfully written to file\n", n)
+	log.Printf("%d bytes successfully written to cache file\n", n)
 
 	// Store the country info as well (this is all now repetition - refactor)
 	b.Reset()
@@ -842,7 +856,7 @@ func (g GeoBed) store() error {
 		b.Reset()
 		return e
 	}
-	log.Printf("%d bytes successfully written to file\n", n)
+	log.Printf("%d bytes successfully written to cache file\n", n)
 
 	// Store the index info (again there's some repetition here)
 	b.Reset()
@@ -864,7 +878,7 @@ func (g GeoBed) store() error {
 		b.Reset()
 		return e
 	}
-	log.Printf("%d bytes successfully written to file\n", n)
+	log.Printf("%d bytes successfully written to cache file\n", n)
 
 	b.Reset()
 	return nil
