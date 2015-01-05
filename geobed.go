@@ -121,15 +121,15 @@ func (c Cities) Swap(i, j int) {
 	c[i], c[j] = c[j], c[i]
 }
 func (c Cities) Less(i, j int) bool {
-	return c[i].CityLower < c[j].CityLower
+	return toLower(c[i].City) < toLower(c[j].City)
 }
 
 // A combined city struct (the various data sets have different fields, this combines what's available and keeps things smaller).
 type GeobedCity struct {
-	City string
-	// This lowercase version is specifically to make sorting and searching faster
-	CityLower  string
-	CityAlt    string
+	City    string
+	CityAlt string
+	// TODO: Think about converting this to a small int to save on memory allocation. Lookup requests can have the strings converted to the same int if there are any matches.
+	// This could make lookup more accurate, easier, and faster even. IF the int uses less bytes than the two letter code string.
 	Country    string
 	Region     string
 	Latitude   float64
@@ -137,6 +137,13 @@ type GeobedCity struct {
 	Population int32
 	Geohash    string
 }
+
+// TODO: String interning? (much like converting country code to int)
+// https://gist.github.com/karlseguin/6570372
+
+// TODO: Store the cities in mmap...???
+// https://github.com/boltdb/bolt/blob/master/bolt_unix.go#L42-L69
+// Maybe even use bolt?
 
 var maxMindCityDedupeIdx map[string][]string
 
@@ -272,7 +279,6 @@ func (g *GeoBed) loadDataSets() {
 
 						var c GeobedCity
 						c.City = strings.Trim(string(fields[1]), " ")
-						c.CityLower = toLower(c.City)
 						c.CityAlt = string(fields[3])
 						c.Country = string(fields[8])
 						c.Region = string(fields[10])
@@ -357,7 +363,6 @@ func (g *GeoBed) loadDataSets() {
 
 							var c GeobedCity
 							c.City = cn
-							c.CityLower = toLower(c.City)
 							c.Country = toUpper(string(fields[0]))
 							c.Region = string(fields[3])
 							c.Latitude = lat
@@ -445,7 +450,7 @@ func (g *GeoBed) loadDataSets() {
 	cityNameIdx = make(map[string]int)
 	for k, v := range g.c {
 		// Get the index key for the first character of the city name.
-		ik := string(v.CityLower[0])
+		ik := toLower(string(v.City[0]))
 		if val, ok := cityNameIdx[ik]; ok {
 			// If this key number is greater than what was previously recorded, then set it as the new indexed key.
 			if val < k {
