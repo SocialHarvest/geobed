@@ -552,7 +552,7 @@ func (g *GeoBed) exactMatchCity(n string) GeobedCity {
 	if len(matchingCities) == 1 {
 		return matchingCities[0]
 		// If more than one was found, we need to guess.
-	} else if len(matchingCities > 1) {
+	} else if len(matchingCities) > 1 {
 		// Then range over those matching cities and try to figure out which one it is - city names are unfortunately not unique of course.
 		// There shouldn't be very many so I don't mind the multiple loops.
 		for _, city := range matchingCities {
