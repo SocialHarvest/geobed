@@ -176,6 +176,17 @@ type CountryInfo struct {
 	EquivalentFipsCode string
 }
 
+// Options when geocoding. For now just an exact match on city name, but there will be potentially other options that can be set to adjust how searching/matching works.
+type GeocodeOptions struct {
+	ExactCity bool
+}
+
+// An index range struct that's used for narrowing down ranges over the large Cities struct.
+type r struct {
+	f int
+	t int
+}
+
 // Creates a new Geobed instance. You do not need more than one. You do not want more than one. There's a fair bit of data to load into memory.
 func NewGeobed() GeoBed {
 	g := GeoBed{}
@@ -478,81 +489,111 @@ func (g *GeoBed) loadDataSets() {
 }
 
 // Forward geocode, location string to lat/lng (returns a struct though)
-func (g *GeoBed) Geocode(n string) GeobedCity {
+func (g *GeoBed) Geocode(n string, opts ...GeocodeOptions) GeobedCity {
 	var c GeobedCity
-	var re = regexp.MustCompile("")
 	n = strings.TrimSpace(n)
 	if n == "" {
 		return c
 	}
+	// variadic optional argument trick
+	options := GeocodeOptions{}
+	if len(opts) > 0 {
+		options = opts[0]
+	}
 
-	// Extract all potential abbreviations.
-	re = regexp.MustCompile(`[\S]{2,3}`)
-	abbrevSlice := re.FindStringSubmatch(n)
+	if options.ExactCity {
+		c = g.exactMatchCity(n)
+	} else {
+		// NOTE: The downside of this (currently) is that something is basically always returned. It's a best guess.
+		// There's not much chance of it returning "not found" (or an empty GeobedCity struct).
+		// If you'd rather have nothing returned if not found, look at more exact matching options.
+		c = g.fuzzyMatchLocation(n)
+	}
 
-	// Convert country to country code and pull it out. We'll use it as a secondary form of validation. Remove the code from the original query.
-	nCo := ""
-	for _, co := range g.co {
-		re = regexp.MustCompile("(?i)^" + co.Country + ",?\\s|\\s" + co.Country + ",?\\s" + co.Country + "\\s$")
-		if re.MatchString(n) {
-			nCo = co.ISO
-			// And remove it so we have a cleaner query string for a city.
-			n = re.ReplaceAllString(n, "")
+	return c
+}
+
+// Returns a GeobedCity only if there is an exact city name match. A stricter match, though if state or country are missing a guess will be made.
+func (g *GeoBed) exactMatchCity(n string) GeobedCity {
+	var c GeobedCity
+	// Ignore the `abbrevSlice` value for now. Use `nCo` and `nSt` for more accuracy.
+	nCo, nSt, _, nSlice := g.extractLocationPieces(n)
+	nWithoutAbbrev := strings.Join(nSlice, " ")
+	ranges := g.getSearchRange(nSlice)
+
+	matchingCities := []GeobedCity{}
+
+	// First, get everything that matches the city exactly (case insensitive).
+	for _, rng := range ranges {
+		// When adjusting the range, the keys become out of sync. Start from rng.f
+		currentKey := rng.f
+		for _, v := range g.c[rng.f:rng.t] {
+			currentKey++
+			// The full string (ie. "New York" or "Las Vegas")
+			if strings.EqualFold(n, v.City) {
+				matchingCities = append(matchingCities, v)
+			}
+			// The pieces with abbreviations removed
+			if strings.EqualFold(nWithoutAbbrev, v.City) {
+				matchingCities = append(matchingCities, v)
+			}
+			// Each piece - doesn't make sense for now. May revisit this.
+			// ie. "New York" or "New" and "York" ... well, "York" is going to match a different city.
+			// While that might be weeded out next, who knows. It's starting to get more fuzzy than I'd like for this function.
+			// for _, np := range nSlice {
+			// 	if strings.EqualFold(np, v.City) {
+			// 		matchingCities = append(matchingCities, v)
+			// 	}
+			// }
 		}
 	}
 
-	// Find US State codes and pull them out as well (do not convert state names, they can also easily be city names).
-	nSt := ""
-	for sc, _ := range UsSateCodes {
-		re = regexp.MustCompile("(?i)^" + sc + ",?\\s|\\s" + sc + ",?\\s|\\s" + sc + "$")
-		if re.MatchString(n) {
-			nSt = sc
-			// And remove it too.
-			n = re.ReplaceAllString(n, "")
+	// Then range over those matching cities and try to figure out which one it is - city names are unfortunately not unique of course.
+	// There shouldn't be very many so I don't mind the multiple loops.
+	for _, city := range matchingCities {
+		// Was the state abbreviation present? That sounds promising.
+		if strings.EqualFold(nSt, city.Region) {
+			c = city
 		}
 	}
-	// Trim spaces and commas off the modified string.
-	n = strings.Trim(n, " ,")
 
-	// Now extract words (potential city names) into a slice. With this, the index will be referenced to pinpoint sections of the g.c []GeobedCity slice to scan.
-	// This results in a much faster lookup. This is over a simple binary search with strings.Search() etc. because the city name may not be the first word.
-	// This should not contain any known country code or US state codes.
-	nSlice := strings.Split(n, " ")
-
-	// Figure out the keys we should range over. This reduces the size of the slice to ultimately range over and increases lookup time.
-	// A binary search could not really be used because data is dirty. Was that query just the city name? Great! We could use a binary search...
-	// But what if the query contained more? A state? Country? Maybe an alternate name for a city... It's just not going to work.
-	// However, we can still use other methods to narrow down the lookup and that's what cityNameIdx is all about.
-	type r struct {
-		f int
-		t int
-	}
-	ranges := []r{}
-	for _, ns := range nSlice {
-		ns = strings.TrimSuffix(ns, ",")
-
-		if len(ns) > 0 {
-			// Get the first character in the string, this tells us where to stop.
-			fc := toLower(string(ns[0]))
-			// Get the previous index key (by getting the previous character in the alphabet) to figure out where to start.
-			pik := string(prev(rune(fc[0])))
-
-			// To/from key
-			fk := 0
-			tk := 0
-			if val, ok := cityNameIdx[pik]; ok {
-				fk = val
-			}
-			if val, ok := cityNameIdx[fc]; ok {
-				tk = val
-			}
-			// Don't let the to key be out of range.
-			if tk == 0 {
-				tk = (len(g.c) - 1)
-			}
-			ranges = append(ranges, r{fk, tk})
+	for _, city := range matchingCities {
+		// Matches the state and country? Likely the best scenario, I'd call it the best match.
+		if strings.EqualFold(nSt, city.Region) && strings.EqualFold(nCo, city.Country) {
+			c = city
 		}
 	}
+
+	// If we still don't have a city, maybe we have a country with the city name, ie. "New York, USA"
+	// This is tougher because there's a "New York" in Florida, Kentucky, and more. Let's use population to assist if we can.
+	if c.City == "" {
+		matchingCountryCities := []GeobedCity{}
+		for _, city := range matchingCities {
+			if strings.EqualFold(nCo, city.Country) {
+				matchingCountryCities = append(matchingCountryCities, city)
+			}
+		}
+
+		// If someone says, "New York, USA" they most likely mean New York, NY because it's the largest city.
+		// Specific locations are often implied based on size or popularity even though the names aren't unique.
+		biggestCity := GeobedCity{}
+		for _, city := range matchingCountryCities {
+			if city.Population > biggestCity.Population {
+				biggestCity = city
+			}
+		}
+		c = biggestCity
+	}
+
+	return c
+}
+
+// When geocoding, this provides a scored best match.
+func (g *GeoBed) fuzzyMatchLocation(n string) GeobedCity {
+	nCo, nSt, abbrevSlice, nSlice := g.extractLocationPieces(n)
+	// Take the reamining unclassified pieces (those not likely to be abbreviations) and get our search range.
+	// These pieces are likely contain the city name. Narrowing down the search range will make the lookup faster.
+	ranges := g.getSearchRange(nSlice)
 
 	var bestMatchingKeys = map[int]int{}
 	var bestMatchingKey = 0
@@ -737,8 +778,84 @@ func (g *GeoBed) Geocode(n string) GeobedCity {
 	// log.Println("Scored:")
 	// log.Println(m)
 
-	c = g.c[bestMatchingKey]
-	return c
+	return g.c[bestMatchingKey]
+}
+
+// Splits a string up looking for potential abbreviations by matching against a shorter list of abbreviations.
+// Returns country, state, a slice of strings with potential abbreviations (based on size; 2 or 3 characters), and then a slice of the remaning pieces.
+// This does a good job at separating things that are clearly abbreviations from the city so that searching is faster and more accuarate.
+func (g *GeoBed) extractLocationPieces(n string) (string, string, []string, []string) {
+	var re = regexp.MustCompile("")
+
+	// Extract all potential abbreviations.
+	re = regexp.MustCompile(`[\S]{2,3}`)
+	abbrevSlice := re.FindStringSubmatch(n)
+
+	// Convert country to country code and pull it out. We'll use it as a secondary form of validation. Remove the code from the original query.
+	nCo := ""
+	for _, co := range g.co {
+		re = regexp.MustCompile("(?i)^" + co.Country + ",?\\s|\\s" + co.Country + ",?\\s" + co.Country + "\\s$")
+		if re.MatchString(n) {
+			nCo = co.ISO
+			// And remove it so we have a cleaner query string for a city.
+			n = re.ReplaceAllString(n, "")
+		}
+	}
+
+	// Find US State codes and pull them out as well (do not convert state names, they can also easily be city names).
+	nSt := ""
+	for sc, _ := range UsSateCodes {
+		re = regexp.MustCompile("(?i)^" + sc + ",?\\s|\\s" + sc + ",?\\s|\\s" + sc + "$")
+		if re.MatchString(n) {
+			nSt = sc
+			// And remove it too.
+			n = re.ReplaceAllString(n, "")
+		}
+	}
+	// Trim spaces and commas off the modified string.
+	n = strings.Trim(n, " ,")
+
+	// Now extract words (potential city names) into a slice. With this, the index will be referenced to pinpoint sections of the g.c []GeobedCity slice to scan.
+	// This results in a much faster lookup. This is over a simple binary search with strings.Search() etc. because the city name may not be the first word.
+	// This should not contain any known country code or US state codes.
+	nSlice := strings.Split(n, " ")
+
+	return nCo, nSt, abbrevSlice, nSlice
+}
+
+// There's potentially 2.7 million items to range though, let's see if we can reduce that by taking slices of the slice in alphabetical order.
+func (g *GeoBed) getSearchRange(nSlice []string) []r {
+	// NOTE: A simple binary search was not helping here since we aren't looking for one specific thing. We have multiple elements, city, state, country.
+	// So we'd end up with multiple binary searches to piece together which could be quite a few exponentially given the possible combinations...And so it was slower.
+
+	ranges := []r{}
+	for _, ns := range nSlice {
+		ns = strings.TrimSuffix(ns, ",")
+
+		if len(ns) > 0 {
+			// Get the first character in the string, this tells us where to stop.
+			fc := toLower(string(ns[0]))
+			// Get the previous index key (by getting the previous character in the alphabet) to figure out where to start.
+			pik := string(prev(rune(fc[0])))
+
+			// To/from key
+			fk := 0
+			tk := 0
+			if val, ok := cityNameIdx[pik]; ok {
+				fk = val
+			}
+			if val, ok := cityNameIdx[fc]; ok {
+				tk = val
+			}
+			// Don't let the to key be out of range.
+			if tk == 0 {
+				tk = (len(g.c) - 1)
+			}
+			ranges = append(ranges, r{fk, tk})
+		}
+	}
+
+	return ranges
 }
 
 func prev(r rune) rune {

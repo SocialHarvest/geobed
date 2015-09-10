@@ -16,7 +16,8 @@ Performance is pretty good, but that is one of the goals. Overtime it should imp
 
 ## Usage
 
-You should re-use the ```GeoBed`` struct as it contains a LOT of data (2.7+ million items). On this struct are the functions to geocode and reverse geocode.
+You should re-use the ```GeoBed``` struct as it contains a LOT of data (2.7+ million items). On this struct are the functions to geocode and reverse geocode. Be aware that
+this also means your machine will need a good bit of RAM since this is all data held in memory (which is also what makes it fast too).
 
 ```
 g := NewGeobed()
