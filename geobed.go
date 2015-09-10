@@ -548,41 +548,47 @@ func (g *GeoBed) exactMatchCity(n string) GeobedCity {
 		}
 	}
 
-	// Then range over those matching cities and try to figure out which one it is - city names are unfortunately not unique of course.
-	// There shouldn't be very many so I don't mind the multiple loops.
-	for _, city := range matchingCities {
-		// Was the state abbreviation present? That sounds promising.
-		if strings.EqualFold(nSt, city.Region) {
-			c = city
-		}
-	}
-
-	for _, city := range matchingCities {
-		// Matches the state and country? Likely the best scenario, I'd call it the best match.
-		if strings.EqualFold(nSt, city.Region) && strings.EqualFold(nCo, city.Country) {
-			c = city
-		}
-	}
-
-	// If we still don't have a city, maybe we have a country with the city name, ie. "New York, USA"
-	// This is tougher because there's a "New York" in Florida, Kentucky, and more. Let's use population to assist if we can.
-	if c.City == "" {
-		matchingCountryCities := []GeobedCity{}
+	// If only one was found, we can stop right here.
+	if len(matchingCities) == 1 {
+		return matchingCities[0]
+		// If more than one was found, we need to guess.
+	} else if len(matchingCities > 1) {
+		// Then range over those matching cities and try to figure out which one it is - city names are unfortunately not unique of course.
+		// There shouldn't be very many so I don't mind the multiple loops.
 		for _, city := range matchingCities {
-			if strings.EqualFold(nCo, city.Country) {
-				matchingCountryCities = append(matchingCountryCities, city)
+			// Was the state abbreviation present? That sounds promising.
+			if strings.EqualFold(nSt, city.Region) {
+				c = city
 			}
 		}
 
-		// If someone says, "New York, USA" they most likely mean New York, NY because it's the largest city.
-		// Specific locations are often implied based on size or popularity even though the names aren't unique.
-		biggestCity := GeobedCity{}
-		for _, city := range matchingCountryCities {
-			if city.Population > biggestCity.Population {
-				biggestCity = city
+		for _, city := range matchingCities {
+			// Matches the state and country? Likely the best scenario, I'd call it the best match.
+			if strings.EqualFold(nSt, city.Region) && strings.EqualFold(nCo, city.Country) {
+				c = city
 			}
 		}
-		c = biggestCity
+
+		// If we still don't have a city, maybe we have a country with the city name, ie. "New York, USA"
+		// This is tougher because there's a "New York" in Florida, Kentucky, and more. Let's use population to assist if we can.
+		if c.City == "" {
+			matchingCountryCities := []GeobedCity{}
+			for _, city := range matchingCities {
+				if strings.EqualFold(nCo, city.Country) {
+					matchingCountryCities = append(matchingCountryCities, city)
+				}
+			}
+
+			// If someone says, "New York, USA" they most likely mean New York, NY because it's the largest city.
+			// Specific locations are often implied based on size or popularity even though the names aren't unique.
+			biggestCity := GeobedCity{}
+			for _, city := range matchingCountryCities {
+				if city.Population > biggestCity.Population {
+					biggestCity = city
+				}
+			}
+			c = biggestCity
+		}
 	}
 
 	return c
